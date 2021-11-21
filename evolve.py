@@ -7,8 +7,6 @@ from typing import ByteString
 tag_text = ''
 chain_detachment_character = 'ቖ'  # \u1256
 base_dir = ''
-if os.name == 'nt': # Required because of my GitHub setup - the price of have multiple projects in one repo.
-    base_dir = ".\\SnowFlakeMigration"
 
 # When parsing we have the problem that opening quotes and closing quotes are not
 # marked up as "opening" or "closing" within the text, but we want to modify our
@@ -68,36 +66,6 @@ def deal_with_quotes(text):
        
         retVal += x
         prev_char = x
-    return retVal
-
-
-def deal_with_overreach(txt):
-    retVal = txt
-
-    # Some nameless languages you might be using as a wrapper to fire off pass-through queries to a database have a problem.
-    # They get upset by unbalanced parens and quotes in the SQL to be passed though. My guess is they use old old parsers
-    # in their complilation / interpretation.  There is one quick and dirty solution - use markup tags in the code you
-    # are translating to protect that SQL text.
-
-    # Find the mark-up tags surrounding the string to be protected
-    # extract the string
-    # base64 encode it
-    # rewrite the string as the base64 version
-    # remove the marker codes
-    # wrap the base64 string with an instruction in the destination language (snowflake) to decode the base64 string.
-
-    # We are going to be changing the string we are iterating over
-    # So the danger is that the indexes we precompute will no longer align with the
-    # insert points.
-    # BUT if we work from the end of the string back to the front this will not be
-    # an issue, hence the reversed().  B2f == back to front
-    b2f = []
-    for x in re.finditer(r'>>>===(.*?)===<<<', retVal, flags=re.IGNORECASE):
-        b2f.append(x)
-    for x in reversed(b2f):
-        s = base64.b64encode(bytes(re.sub(r'>>>===(.*?)===<<<', r'\1', retVal[x.start():x.end()]), 'utf-8')).decode()
-        retVal = retVal[:x.start()] + "BASE64_DECODE_STRING('" + s + "')" + retVal[x.end():]
-
     return retVal
 
 
@@ -186,25 +154,6 @@ def unmask_sql_text(txt):
         replacement_string = pairing["REPLACEMENT_STR"]
         retVal = re.sub(search_string, replacement_string, retVal, flags=re.IGNORECASE)
     return retVal
-
-
-def line_has_impala_function_call(txt, regexes):
-    retVal = []
-    for pat in regexes:
-        # extract the function name from the regexp pattern that detects it
-        if re.match(pat, txt): retVal.append(re.sub(r'[^)]+\)(.*?)\[.*', r'\1', pat))
-    return retVal
-
-
-def find_impala_function_calls(txt, regexes):
-    linelist = iter(txt.splitlines())
-    collected_impala_functions = []
-    for nextline in linelist:
-        possible_impala_function_call = re.findall(r'([A-Z][A-Z0-9_]+\()', nextline.upper())
-        if len(possible_impala_function_call) > 0:
-            s = possible_impala_function_call.pop()
-            collected_impala_functions += line_has_impala_function_call(s, regexes)
-    return list(set(collected_impala_functions))
 
 
 # Having the end user (who modifies migration_map.json) build PARSER_REGEXP
@@ -322,45 +271,43 @@ def match_is_in_section_markedup_for_hand_migration(skips, m):
     return False
 
 
-def print_command_line_options():
-    print('evolve.py -h                  [Show help (this)]')
-    print('evolve.py -l -i <inputpath>   [Scan all files in <inputpath> and list the functions (see source_language_function_list.txt)]')
-    print('evolve.py -i <inputpath> -o <outputpath> -t <tag text> -q <only allowable string quote character>')
-    print('                              [migrate the source language functions in <inputpath> to destination language functions, writing result to <outputpath>.]')
-    print('                              [The optional <tag text> is appended to migrations, along with the source function name, to enable checking of the migration.]')
-    print('                              [The optional <only allowable string quote character> is useful when your destination language only allows one style of]')
-    print('                              [quote (single or double) to book end strings. This actually happens in the wild.]')
-    print('NOTE: <inputpath> and <outputpath> must both be a file or both be a directory.')
-    print('      if <inputpath> is a directory then all .sas and .sql files there are read, processed, and output to <outputpath>.')
-    print('Setup and maintainance:')
-    print('      The -l option requires a file listing the source language functions, named "source_language_function_list.txt".')
-    print('      You must maintain a file named migration_map.json that describes how source language functions are to be migrated. The file contains a dictionary')
-    print('      structure, with the top level keys being the names of source language functions (uppercased) to be migrated.  The value for these keys is also a')
-    print('      dictionary with two entries: DESTINATION_LANGUAGE_FUNCTION_TEMPLATE and ARGUMENTS_AND_LITERALS_MAP."')
-    print('      The value for DESTINATION_LANGUAGE_FUNCTION_TEMPLATE must be a string, containing the text "_ARGS_".  You may be tempted to place literal values')
-    print('      here, but they are better placed in the value of the ARGUMENTS_AND_LITERALS_MAP key. In some instances your source function may be best migrated')
-    print('      to a nesting of destination functions, in which case the value of the DESTINATION_LANGUAGE_FUNCTION_TEMPLATE key would be something like this:')
-    print('      "DESTFUNC1(DESTFUNCT2(DESTFUNC3(_ARGS_)))". Where there is a one to one mapping between the source function and the destination function, the')
-    print('      value would look like this: "DESTFUNC(_ARGS_)".')
-    print('      The value for the ARGUMENTS_AND_LITERALS_MAP key is an array which can hold strings (these act as literals or fixed arguments) or integers.    ')
-    print('      Integer values are indexes into the arguments passed to the source function.                                                                   ')
-    print('      Given this source code -')
-    print('           source_func1(17,a_function_returning_a_float(function_returns_who_knows_what(3,44), 62),"b")')
-    print('      we get these arguments that we can index -')
-    print('      1: 17')
-    print('      2: a_function_returning_a_float(function_returns_who_knows_what(3,44), 62)')
-    print('      3: "b"')
-    print('      As far as evolve.py is concerned, these are all strings, and it does not care if they are valid arguments for the source function.')
-    print('      When mapping these functions to the destination source, we might need to change their order or insert literals, and we might not be')
-    print('      able to use all of the arguments available in the source language. We define this in the value to the ARGUMENTS_AND_LITERALS_MAP key, like so:')
-    print('      "ARGUMENTS_AND_LITERALS_MAP": [3, "MY_LITERAL", 1]')
-    print('      Note how the order of arguments has been changed, a literal inserted, and one argument has not been used.')
-       
-    return
+#def print_command_line_options():
+#    print('evolve.py -h                  [Show help (this)]')
+#    print('evolve.py -i <inputpath> -o <outputpath> -t <tag text> -q <only allowable string quote character>')
+#    print('                              [migrate the source language functions in <inputpath> to destination language functions, writing result to <outputpath>.]')
+#    print('                              [The optional <tag text> is appended to migrations, along with the source function name, to enable checking of the migration.]')
+#    print('                              [The optional <only allowable string quote character> is useful when your destination language only allows one style of]')
+#    print('                              [quote (single or double) to book end strings. This actually happens in the wild.]')
+#    print('NOTE: <inputpath> and <outputpath> must both be a file or both be a directory.')
+#    print('      if <inputpath> is a directory then all .sas and .sql files there are read, processed, and output to <outputpath>.')
+#    print('Setup and maintainance:')
+#    print('      The -l option requires a file listing the source language functions, named "source_language_function_list.txt".')
+#    print('      You must maintain a file named migration_map.json that describes how source language functions are to be migrated. The file contains a dictionary')
+#    print('      structure, with the top level keys being the names of source language functions (uppercased) to be migrated.  The value for these keys is also a')
+#    print('      dictionary with two entries: DESTINATION_LANGUAGE_FUNCTION_TEMPLATE and ARGUMENTS_AND_LITERALS_MAP."')
+#    print('      The value for DESTINATION_LANGUAGE_FUNCTION_TEMPLATE must be a string, containing the text "_ARGS_".  You may be tempted to place literal values')
+#    print('      here, but they are better placed in the value of the ARGUMENTS_AND_LITERALS_MAP key. In some instances your source function may be best migrated')
+#    print('      to a nesting of destination functions, in which case the value of the DESTINATION_LANGUAGE_FUNCTION_TEMPLATE key would be something like this:')
+#    print('      "DESTFUNC1(DESTFUNCT2(DESTFUNC3(_ARGS_)))". Where there is a one to one mapping between the source function and the destination function, the')
+#    print('      value would look like this: "DESTFUNC(_ARGS_)".')
+#    print('      The value for the ARGUMENTS_AND_LITERALS_MAP key is an array which can hold strings (these act as literals or fixed arguments) or integers.    ')
+#    print('      Integer values are indexes into the arguments passed to the source function.                                                                   ')
+#    print('      Given this source code -')
+#    print('           source_func1(17,a_function_returning_a_float(function_returns_who_knows_what(3,44), 62),"b")')
+#    print('      we get these arguments that we can index -')
+#    print('      1: 17')
+#    print('      2: a_function_returning_a_float(function_returns_who_knows_what(3,44), 62)')
+#    print('      3: "b"')
+#    print('      As far as evolve.py is concerned, these are all strings, and it does not care if they are valid arguments for the source function.')
+#    print('      When mapping these functions to the destination source, we might need to change their order or insert literals, and we might not be')
+#    print('      able to use all of the arguments available in the source language. We define this in the value to the ARGUMENTS_AND_LITERALS_MAP key, like so:')
+#    print('      "ARGUMENTS_AND_LITERALS_MAP": [3, "MY_LITERAL", 1]')
+#    print('      Note how the order of arguments has been changed, a literal inserted, and one argument has not been used.')
+#       
+#    return
 
 
 if __name__ == '__main__':
-    list_functions = False
     no_option_given = True
     inputpath = ''
     outputpath = ''
@@ -372,20 +319,10 @@ if __name__ == '__main__':
     try:
         opts, args = getopt.getopt(sys.argv[1:],"hli:o:t:q:")
     except getopt.GetoptError:
-        print_command_line_options()
         sys.exit(2)
     for opt, arg in opts:
         no_option_given = False
-        if opt == '-h':
-            print_command_line_options()
-            sys.exit(0)
-        if opt == '-l':
-            list_functions = True
-            # Yes, I know. Not ideal.
-            with open(os.path.join(base_dir,"source_language_function_list.txt"), "rt") as f:
-                for l in f.readlines():
-                    source_language_function_list_re.append(r'(\(|\b)' + l.strip() + "[(]")  # optional leading ( because function can be nested.
-        elif opt == '-i':
+        if opt == '-i':
             inputpath = os.path.join(base_dir,arg)
         elif opt == '-o':
             outputpath = os.path.join(base_dir,arg)
@@ -394,27 +331,20 @@ if __name__ == '__main__':
         elif opt == 'q':
             only_allowable_string_quote_character = arg.strip()
     if no_option_given:
-        print_command_line_options()
         sys.exit(0)
     if inputpath != '':
         try:
-            if os.path.isdir(inputpath) and (os.path.isdir(outputpath) or list_functions == True):
+            if os.path.isdir(inputpath) and os.path.isdir(outputpath):
                 for input_file in [f for f in os.listdir(inputpath) if os.path.isfile(os.path.join(inputpath, f)) and re.match('.*(sas|sql)$', f, flags=re.IGNORECASE)]:
-                    if list_functions:
-                        file_queue.append({
-                            "input_file": os.path.join(inputpath, input_file)  # we are just writing to STDOUT so not output file
-                        })
-                    else:
-                        file_queue.append({
-                            "input_file": os.path.join(inputpath, input_file)
-                          , "output_file": os.path.join(outputpath, input_file)  # we are doing a full migration so need an output file
-                        })
-            elif os.path.isfile(inputpath) and ((not os.path.isdir(outputpath)) or list_functions):
+                    file_queue.append({
+                        "input_file": os.path.join(inputpath, input_file)
+                      , "output_file": os.path.join(outputpath, input_file)  # we are doing a full migration so need an output file
+                    })
+            elif os.path.isfile(inputpath) and not os.path.isdir(outputpath):
                 file_queue.append({
                     "input_file": inputpath
                 })
             else:
-                print_command_line_options()
                 sys.exit(0)
         except IOError:
             print("Could not read " + inputpath)
@@ -427,33 +357,27 @@ if __name__ == '__main__':
         except IOError:
             print("Could not open/read " + f["output_file"])
             sys.exit(2)
-        if list_functions:
-            print("Scanning for functions in " + f["input_file"])
-            function_in_source_file = find_impala_function_calls(source_text, source_language_function_list_re)
-            function_in_source_file.sort()
-            for fn in function_in_source_file: print(fn)
-        else:
-            masked_text = mask_sql_text(deal_with_interrim_code(deal_with_overreach(source_text)))
-            # Now, we need to deal with chaining.
-            # the regexes that detect a function to migrate (rightly) only find the inner function of
-            # a chain of functions.  Which means we need multiple passes to replace all of a chain.
-            # I limit to 30, incase of runaway re-writing.
-            # I also deal with the possibility that the rewritten (migrated) function has the same name
-            # (just different arguments) by masking the name, which bypasses the innermost-member-of-the-chain only
-            # protection.  Then at the end, I remove all the masking.
-            last_masked_text = masked_text
-            for i in range(1,30):
-                masked_text = migrate_as_per_json(masked_text)
-                if last_masked_text == masked_text:
-                    endpoint_text = unmask_sql_text(masked_text)
-                    print("Migrated " + f["input_file"] + " in " + str(i - 1) + " cycles.")
-                    break
-                else:
-                    last_masked_text = masked_text
-           
-            try:
-                o = open(f["output_file"], 'wt', encoding='utf-8')
-                o.write(endpoint_text)
-            except IOError:
-                print("Could not write " + f["output_file"])
-                sys.exit(2)
+        masked_text = mask_sql_text(deal_with_interrim_code(source_text))
+        # Now, we need to deal with chaining.
+        # the regexes that detect a function to migrate (rightly) only find the inner function of
+        # a chain of functions.  Which means we need multiple passes to replace all of a chain.
+        # I limit to 30, incase of runaway re-writing.
+        # I also deal with the possibility that the rewritten (migrated) function has the same name
+        # (just different arguments) by masking the name, which bypasses the innermost-member-of-the-chain only
+        # protection.  Then at the end, I remove all the masking.
+        last_masked_text = masked_text
+        for i in range(1,30):
+            masked_text = migrate_as_per_json(masked_text)
+            if last_masked_text == masked_text:
+                endpoint_text = unmask_sql_text(masked_text)
+                print("Migrated " + f["input_file"] + " in " + str(i - 1) + " cycles.")
+                break
+            else:
+                last_masked_text = masked_text
+        
+        try:
+            o = open(f["output_file"], 'wt', encoding='utf-8')
+            o.write(endpoint_text)
+        except IOError:
+            print("Could not write " + f["output_file"])
+            sys.exit(2)

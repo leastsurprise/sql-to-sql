@@ -32,21 +32,6 @@
       , "ARGUMENTS_AND_LITERALS_MAP": [1]
       , "COMMENT": "This is actually a Hive function but I made use of it alongside Impala functions."
     }
-  , "REGEXP_ESCAPE" : {
-        "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "(_ARGS_)"
-      , "ARGUMENTS_AND_LITERALS_MAP": [1]
-      , "COMMENT": "There is no equivalent SnowFlake function, we need a sidestep approach. See regexp_encode() below."
-    }
-  , "REGEXP_ENCODE" : {
-        "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "regexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\n_ARGS_,$$\\.$$,'\\u2776')\n,$$\\\\$$,'\\u2777')\n,$$\\+$$,'\\u2778')\n,$$\\*$$,'\\u2779')\n,$$\\?$$,'\\u277A')\n,$$\\[$$,'\\u277B')\n,$$\\^$$,'\\u277C')\n,$$\\]$$,'\\u277D')\n,'\\\\$','\\u277E')\n,$$\\($$,'\\u277F')\n,$$\\)$$,'\\u2780')\n,$$\\{$$,'\\u2781')\n,$$\\}$$,'\\u2782')\n,$$\\=$$,'\\u2783')\n,$$\\!$$,'\\u2784')\n,$$\\<$$,'\\u2785')\n,$$\\>$$,'\\u2786')\n,$$\\|$$,'\\u2787')\n,$$\\:$$,'\\u2788')\n,$$\\-$$,'\\u2789')\n"
-      , "ARGUMENTS_AND_LITERALS_MAP": [1]
-      , "COMMENT": "This is not actually a SnowFlake function, it is more a macro I wrote."
-    }
-  , "REGEXP_DECODE" : {
-        "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(_ARGS_,'\u2776','.'),'\u2777','\\\\'),'\u2778','+'),'\u2779','+'),'\u277A','?'),'\u277B','['),'\u277C','^'),'\u277D',']'),'\u277E','$'),'\u277F','('),'\u2780',')'),'\u2781','{'),'\u2782','}'),'\u2783','='),'\u2784','!'),'\u2785','<'),'\u2786','>'),'\u2787','|'),'\u2788',':'),'\u2789','-')"
-      , "ARGUMENTS_AND_LITERALS_MAP": [1]
-      , "COMMENT": "This is not actually a SnowFlake function, it is more a macro I wrote."
-  }
   , "DATEDIFF" : {
         "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "DATEDIFF(_ARGS_)"
       , "ARGUMENTS_AND_LITERALS_MAP": ["'DAY'",1,2]
