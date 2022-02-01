@@ -11,6 +11,13 @@
         "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "ABS(HASH(_ARGS_))"
       , "ARGUMENTS_AND_LITERALS_MAP": [1]
     }
+  , "TO_DATE" : {
+        "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "CAST(TOD_ATE(_ARGS_) AS VARCHAR(10))"
+      , "ARGUMENTS_AND_LITERALS_MAP": [1]
+      , "COMMENT": "Impala returns a String, SnowFlake returns a Date, so when migrating you should cast to a String."
+      , "COMMENT_2": "Note this is outputting TOD_ATE not TO_DATE.  Otherwise we get a destructive cycle, so we need the old over and under approach."
+      , "COMMENT_3": "See the ADHOC_REGEXP section, this contains the TOD_ATE keyword.  So ADHOC_REGEXP runs after the replacements in this section."
+    }
   , "INSTR" : {
         "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "CHARINDEX(_ARGS_)"
       , "ARGUMENTS_AND_LITERALS_MAP": [2,1,3]
@@ -32,9 +39,25 @@
       , "ARGUMENTS_AND_LITERALS_MAP": [1]
       , "COMMENT": "This is actually a Hive function but I made use of it alongside Impala functions."
     }
+  , "REGEXP_ESCAPE" : {
+        "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "(_ARGS_)"
+      , "ARGUMENTS_AND_LITERALS_MAP": [1]
+      , "COMMENT": "There is no equivalent SnowFlake function, we need a sidestep approach. See regexp_encode() below."
+    }
+  , "REGEXP_ENCODE" : {
+        "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "regexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\nregexp_replace(\n_ARGS_,$$\\.$$,'\\u2776')\n,$$\\\\$$,'\\u2777')\n,$$\\+$$,'\\u2778')\n,$$\\*$$,'\\u2779')\n,$$\\?$$,'\\u277A')\n,$$\\[$$,'\\u277B')\n,$$\\^$$,'\\u277C')\n,$$\\]$$,'\\u277D')\n,'\\\\$','\\u277E')\n,$$\\($$,'\\u277F')\n,$$\\)$$,'\\u2780')\n,$$\\{$$,'\\u2781')\n,$$\\}$$,'\\u2782')\n,$$\\=$$,'\\u2783')\n,$$\\!$$,'\\u2784')\n,$$\\<$$,'\\u2785')\n,$$\\>$$,'\\u2786')\n,$$\\|$$,'\\u2787')\n,$$\\:$$,'\\u2788')\n,$$\\-$$,'\\u2789')\n"
+      , "ARGUMENTS_AND_LITERALS_MAP": [1]
+      , "COMMENT": "This is not actually a SnowFlake function, it is more a macro I wrote."
+    }
+  , "REGEXP_DECODE" : {
+        "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(_ARGS_,'\u2776','.'),'\u2777','\\\\'),'\u2778','+'),'\u2779','+'),'\u277A','?'),'\u277B','['),'\u277C','^'),'\u277D',']'),'\u277E','$'),'\u277F','('),'\u2780',')'),'\u2781','{'),'\u2782','}'),'\u2783','='),'\u2784','!'),'\u2785','<'),'\u2786','>'),'\u2787','|'),'\u2788',':'),'\u2789','-')"
+      , "ARGUMENTS_AND_LITERALS_MAP": [1]
+      , "COMMENT": "This is not actually a SnowFlake function, it is more a macro I wrote."
+  }
   , "DATEDIFF" : {
         "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "DATEDIFF(_ARGS_)"
-      , "ARGUMENTS_AND_LITERALS_MAP": ["'DAY'",1,2]
+      , "ARGUMENTS_AND_LITERALS_MAP": ["'DAY'",2,1]
+      , "SUPPRESS_TAG": "Y"
       , "COMMENT": "In Impala, DAY is the only DATE_OR_TIMEPART available and is implied."
     }
   , "NOW" : {
@@ -65,25 +88,46 @@
         "DESTINATION_LANGUAGE_FUNCTION_TEMPLATE": "ARRAY_SIZE(_ARGS_)"
       , "ARGUMENTS_AND_LITERALS_MAP": [1]
     }
-  , "ADHOC_REGEXP" :
+  , "ADHOC_REGEXP" : 
         [
-            {"SEARCH_STR": ".*invalidate metadata.*", "REPLACEMENT_STR": "" }
+            {"SEARCH_STR": "\\bleft\\(cast\\(tod_ate\\((.*?)fdtm(.*?)\\s+as\\s+string\\)(.*?),\\s*4\\s*\\)", "REPLACEMENT_STR": "cast(year(\\1fdtm\\2) as varchar(4))" }
+          , {"SEARCH_STR": "\\bleft\\(cast\\(tod_ate\\((.*?)\\s+as\\s+string\\)(.*?),\\s*4\\s*\\)", "REPLACEMENT_STR": "cast(year(\\1) as varchar(4))" }
+          , {"SEARCH_STR": "\\bleft\\(cast\\((.*?)fdtm(.*?)\\s+as\\s+string\\)\\s*,\\s*4\\s*\\)", "REPLACEMENT_STR": "cast(year(\\1fdtm\\2) as varchar(4))" }
+          , {"SEARCH_STR": "\\bcast\\((.*?)fdtm(.*?)\\s+as\\s+string\\s*\\)\\s*(\\S{1,2})\\s*('\\d{4}[-]\\d{2}[-]\\d{2}')", "REPLACEMENT_STR": "\\1fdtm\\2 \\3 to_timestamp(\\4, 'YYYY-MM-DD')" }
+          , {"SEARCH_STR": "lab_gst_project\\.", "REPLACEMENT_STR": "lab.shared_rdq." }
+          , {"SEARCH_STR": ".*invalidate metadata.*", "REPLACEMENT_STR": "" }
           , {"SEARCH_STR": ".*compute stats.*", "REPLACEMENT_STR": "" }
-          , {"SEARCH_STR": "create table &build_ver\\.", "REPLACEMENT_STR": "create table lab.property.pd2" }
-          , {"SEARCH_STR": "create table if not exists &build_ver\\.", "REPLACEMENT_STR": "create table if not exists lab.property.pd2" }
-          , {"SEARCH_STR": "_&build_ver._", "REPLACEMENT_STR": "_pd2_" }
-          , {"SEARCH_STR": "&build_ver.", "REPLACEMENT_STR": "pd2" }
-          , {"SEARCH_STR": "\\bfrom\\s+pd2_", "REPLACEMENT_STR": "from lab.property.pd2_" }
+          , {"SEARCH_STR": "create table &build_ver\\.", "REPLACEMENT_STR": "create table lab.property.pd3" }
+          , {"SEARCH_STR": "create table if not exists &build_ver\\.", "REPLACEMENT_STR": "create table if not exists lab.property.pd3" }
+          , {"SEARCH_STR": "_&build_ver._", "REPLACEMENT_STR": "_pd3_" }
+          , {"SEARCH_STR": "&build_ver.", "REPLACEMENT_STR": "pd3" }
+          , {"SEARCH_STR": "\\bfrom\\s+pd2_", "REPLACEMENT_STR": "from lab.property.pd3_" }
           , {"SEARCH_STR": "stored as parquet\\s*", "REPLACEMENT_STR": "as " }
+          , {"SEARCH_STR": "lab_heritage2dip_project\\.", "REPLACEMENT_STR": "lab.shared_rdq." }
           , {"SEARCH_STR": "lab_property_project\\.", "REPLACEMENT_STR": "lab.property." }
           , {"SEARCH_STR": "prod_raw_restricted_access\\.lol_", "REPLACEMENT_STR": "factory_prod.raw_rdq.lol_" }
           , {"SEARCH_STR": "prod_raw_restricted_access\\.prp_", "REPLACEMENT_STR": "factory_prod.raw_rdq.prp_" }
           , {"SEARCH_STR": "prod_raw_restricted_access\\.dss_", "REPLACEMENT_STR": "factory_prod.raw_rdq.dss_" }
           , {"SEARCH_STR": "prod_raw_restricted_access\\.", "REPLACEMENT_STR": "factory_prod.raw_rdq." }
+          , {"SEARCH_STR": "prod_raw_full_access\\.", "REPLACEMENT_STR": "factory_prod.raw_rdq." }
+          , {"SEARCH_STR": "prod_refined_full_access\\.", "REPLACEMENT_STR": "factory_prod.refined_rdq." }
+          , {"SEARCH_STR": "prod_refined_restricted_access\\.", "REPLACEMENT_STR": "factory_prod.refined_rdq." }
           , {"SEARCH_STR": "\\s*\\) by (hive|imp)db;", "REPLACEMENT_STR": ";) by sas_snw;" }
           , {"SEARCH_STR": "\\s*(hive|imp)db;", "REPLACEMENT_STR": " sas_snw;" }
           , {"SEARCH_STR": "\\bas\\s+as\\b", "REPLACEMENT_STR": "as" }
           , {"SEARCH_STR": "\\s+[>]\\s+=\\s+", "REPLACEMENT_STR": " >= " }
           , {"SEARCH_STR": "\\bpurge", "REPLACEMENT_STR": " " }
+          , {"SEARCH_STR": "TOD_ATE", "REPLACEMENT_STR": "TO_DATE" }
+          , {"SEARCH_STR": "\\bcast\\((.*?) as int\\)", "REPLACEMENT_STR": "try_cast(\\1 as int)" }
+          , {"SEARCH_STR": "&ownership", "REPLACEMENT_STR": "lab.property.pd3_ownership_view" }
+          , {"SEARCH_STR": ".*execute\\(\\s*;\\s*\\)\\s*by\\s*sas_snw\\s*;\\s*", "REPLACEMENT_STR": "" }
+          , {"SEARCH_STR": "cast\\((?!left)(.*?)\\s+as\\s+varchar\\((\\d+)\\)\\)", "REPLACEMENT_STR": "cast(left(\\1, \\2) as varchar(\\2))" }
+          , {"SEARCH_STR": ".*execute\\(\\s*drop table.*?\\)\\s+by\\s+(sas_snw|impbd)\\s*;\\s*", "REPLACEMENT_STR": "" }
+          , {"SEARCH_STR": "create\\s+table\\s+(if\\s+not\\s+exists\\s+)?", "REPLACEMENT_STR_2": "create or replace table ", "REPLACEMENT_STR": "create or replace temporary table " }
+          , {"SEARCH_STR": "CREATE_TEMPORARY_TABLE\\s+(if\\s+not\\s+exists\\s+)?", "REPLACEMENT_STR": "create or replace temporary table " }
+          , {"SEARCH_STR": "CREATE_PERSISTANT_TABLE\\s+(if\\s+not\\s+exists\\s+)?", "REPLACEMENT_STR": "create or replace table " }
+          , {"SEARCH_STR": "c_a_s_t", "REPLACEMENT_STR": "cast" }
+          , {"SEARCH_STR": "l_e_f_t", "REPLACEMENT_STR": "left" }
         ]
 }
+
